@@ -20,17 +20,12 @@ canvas.height = grid_height * block_height;
 canvas_e.width = grid_width * block_width;
 canvas_e.height = grid_height * block_height;
 
-
 var eps0 = 8.85e-12;
-
 var h = 0.001;
-var r;
 var grid = new Float32Array(grid_width * grid_height);
 var Ex = new Float32Array(egrid_width * egrid_height);
 var Ey = new Float32Array(egrid_width * egrid_height);
 
-
-var tmp;
 var setpoints = new Float32Array(grid_width * grid_height);
 var charge_density = new Float32Array(grid_width * grid_height);
 
@@ -43,8 +38,7 @@ function voltage_block(grid, xmin, ymin, width, height, voltage) {
     }
 }
 
-
-function interpolate( val, y0, x0, y1, x1 ) {
+function interpolate(val, y0, x0, y1, x1) {
     return (val-x0)*(y1-y0)/(x1-x0) + y0;
 }
 
@@ -57,10 +51,10 @@ function base(val) {
 }
 
 function get_rgb(s) {
-  r = Math.round(255*base(s - 0.5));
-  g = Math.round(255*base(s));
-  b = Math.round(255*base(s + 0.5));
-  return "rgba("+r+","+g+","+b+","+(255)+")";
+    var r = Math.round(255*base(s - 0.5));
+    var g = Math.round(255*base(s));
+    var b = Math.round(255*base(s + 0.5));
+    return "rgba("+r+","+g+","+b+","+(255)+")";
 }
 
 function render_viewer(ctx, grid) {
@@ -71,15 +65,6 @@ function render_viewer(ctx, grid) {
     var maxe = 0;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // re-compute electric field
-    for (var y = 0; y < egrid_height; y++) {
-        for (var x = 0; x < egrid_width; x++) {
-        Ex[y * egrid_height + x] = -(grid[y * grid_height + x + 1] - grid[y * grid_height + x])/h;
-        Ey[y * egrid_height + x] = -(grid[(y+1) * grid_height + x] - grid[y * grid_height + x])/h;
-        }
-    }
-
 
     for (var i = 0; i < grid_height; i++) {
         for (var j = 0; j < grid_width; j++) {
@@ -169,57 +154,57 @@ ymin = Math.round(0.58*grid_height);
 ymax = Math.round(0.60*grid_height);
 voltage_block(grid, xmin, ymin, xmax-xmin, ymax-ymin, -V);
 
-ymin = Math.round(0.63*grid_height);
-ymax = Math.round(0.65*grid_height);
+ymin = Math.round(0.65*grid_height);
+ymax = Math.round(0.67*grid_height);
 voltage_block(grid, xmin, ymin, xmax-xmin, ymax-ymin, V);
 
-charge_density[0.2*grid_height*grid_width + 0.7*grid_width] = 1e-4;
-charge_density[0.2*grid_height*grid_width + 0.3*grid_width] = -1e-4;
+charge_density[0.2*grid_height*grid_width + 0.5*grid_width] = 1e-4;
+charge_density[0.3*grid_height*grid_width + 0.5*grid_width] = -1e-4;
+
+function update_efield() {
+    // re-compute electric field from potential
+    for (var y = 0; y < egrid_height; y++) {
+        for (var x = 0; x < egrid_width; x++) {
+        Ex[y * egrid_height + x] = -(grid[y * grid_height + x + 1] - grid[y * grid_height + x])/h;
+        Ey[y * egrid_height + x] = -(grid[(y+1) * grid_height + x] - grid[y * grid_height + x])/h;
+        }
+    }
+
+}
 
 function update_grid() {
-  // update voltages
+    // update voltages
+    var residual = 0;
 
-  var residual = 0;
-  for (var y = 0; y < grid_height; y++) { // row
-    for (var x = 0; x < grid_width; x++) { // column
-      var setpoint = setpoints[y * grid_width + x];
+    for (var y = 0; y < grid_height; y++) { // row
+        for (var x = 0; x < grid_width; x++) { // column
+            var setpoint = setpoints[y * grid_width + x];
 
-      if (x > 0 && x < grid_width-1 && y > 0 && y < grid_height-1
-          && setpoint === 0) {
+            if (x > 0 && x < grid_width-1 && y > 0 && y < grid_height-1
+                && setpoint === 0) {
+                // interior node
+                residual = (grid[(y-1) * grid_width + x] +
+                            grid[(y+1) * grid_width + x] +
+                            grid[y * grid_width + (x-1)] +
+                            grid[y * grid_width + (x+1)] +
+                            charge_density[y * grid_width + x]*h*h/eps0)/4.0
+                        - grid[y * grid_width + x];
 
-        // interior node
-        residual = (grid[(y-1) * grid_width + x] +
-                    grid[(y+1) * grid_width + x] +
-                    grid[y * grid_width + (x-1)] +
-                    grid[y * grid_width + (x+1)] +
-                    charge_density[y * grid_width + x]*h*h/eps0)/4.0
-                 - grid[y * grid_width + x];
-
-        /*
-        if (y === ymax+1 && x === xmin-1) {
-            console.log(grid[(y-1) * grid_width + x]);
-            console.log(grid[(y+1) * grid_width + x]);
-            console.log(grid[(y) * grid_width + x-1]);
-            console.log(grid[(y) * grid_width + x+1]);
-            console.log(r);
-            console.log('---');
+                grid[y * grid_width + x] = grid[y*grid_width + x] + w*residual;
+            }
         }
-        */
-        grid[y * grid_width + x] = grid[y*grid_width + x] + w*residual;
-      }
     }
-  }
-
 }
 
 var iter = 0;
 function update() {
     console.log('update: ' + iter);
-    if (iter % 5 === 0) {
-        update_grid();
-    }
-    render_viewer(ctx, grid);
+    update_grid();
 
+    if (iter % 5 === 0) {
+        update_efield();
+        render_viewer(ctx, grid);
+    }
     iter += 1;
 }
 
